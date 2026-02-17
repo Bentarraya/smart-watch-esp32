@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <ChronosESP32.h> // Library inti untuk koneksi ke aplikasi Chronos
+#include <ChronosESP32.h> 
 #include <Org_01.h>
 #include <SeaDog4sz.h>
 
@@ -112,16 +112,16 @@ void onConfigurationReceived(Config configType, uint32_t value1, uint32_t value2
     
     // Tambahkan ini di onConfigurationReceived untuk CF_PBAT
     case CF_PBAT: {
-      currentPhoneBattery = value1;
-      isPhoneCharging = (value2 == 1);
+      // JANGAN update currentPhoneBattery dari sini karena selalu 0
+      // Tapi kita bisa ambil charging status jika perlu
+      // isPhoneCharging = (value2 == 1); // Opsional
       
-      // DEBUG: perkuat serial print
-      Serial.print("===== PHONE BATTERY RECEIVED ===== Level: ");
-      Serial.print(currentPhoneBattery);
-      Serial.print("%, Charging: ");
-      Serial.println(isPhoneCharging ? "Yes" : "No");
+      Serial.print("CF_PBAT received - Ignoring battery level: ");
+      Serial.print(value1);
+      Serial.print(", Charging: ");
+      Serial.println(value2 == 1 ? "Yes" : "No");
       
-      // Tambah flag untuk debug di display
+      // JANGAN update currentPhoneBattery = value1; <-- HAPUS BARIS INI
       break;
     }
     
@@ -147,11 +147,39 @@ void onConfigurationReceived(Config configType, uint32_t value1, uint32_t value2
   }
 }
 
-// 4. Callback Data (untuk data custom)
+// 4. Callback Data (untuk data custom) - FINAL CORRECT VERSION
 void onDataReceived(uint8_t *data, int length) {
   Serial.print("Data received, length: ");
   Serial.println(length);
-  // Parse data custom jika diperlukan
+  
+  // Data battery selalu length 8
+  if (length == 8) {
+    // Tampilkan semua byte untuk referensi
+    Serial.print("Battery data bytes: ");
+    for (int i = 0; i < length; i++) {
+      Serial.print(data[i]);
+      Serial.print(" ");
+    }
+    Serial.println();
+    
+    // BYTE KE-7 (index 7) adalah battery level!
+    int batteryLevel = data[7];
+    
+    // Validasi: level harus antara 0-100
+    if (batteryLevel >= 0 && batteryLevel <= 100) {
+      currentPhoneBattery = batteryLevel;
+      
+      // Charging flag mungkin di byte lain, tapi kita lihat dulu
+      // isPhoneCharging = (data[1] == 1); // Opsional
+      
+      Serial.print("===== PHONE BATTERY UPDATED ===== Level: ");
+      Serial.print(currentPhoneBattery);
+      Serial.println("%");
+    } else {
+      Serial.print("Invalid battery level: ");
+      Serial.println(batteryLevel);
+    }
+  }
 }
 
 // 5. Callback Raw Data
@@ -291,6 +319,18 @@ void loop() {
     printAllConfigs();
   }
   
+  // Tambahkan di loop untuk request data baterai lebih sering
+  if (now - lastBatteryCheck >= 10000) { // setiap 10 detik
+    lastBatteryCheck = now;
+    
+    // Request data baterai dengan command khusus
+    uint8_t cmd[] = {0x0B, 0x01};
+    chronos.sendCommand(cmd, 2);
+    
+    Serial.println("Requesting battery data...");
+  }
+
+
   updateDisplay();
   delay(50);
 }
