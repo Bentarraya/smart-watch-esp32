@@ -347,6 +347,15 @@ void drawCenteredText(String text, int y, int textSize, const GFXfont* font) {
   display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
   
   int x = (SCREEN_WIDTH - w) / 2;
+  
+  // Tambahkan koreksi manual untuk font tertentu
+  if (font == &SeaDog_rgEVB4pt7b) {
+    x -= 2;  // Geser 2 pixel ke kiri untuk font SeaDog
+  }
+  if (font == &Org_01) {
+    x += 0;  // Tidak perlu koreksi
+  }
+  
   display.setCursor(x, y);
   display.print(text);
 }
@@ -363,8 +372,8 @@ void updateDisplay() {
   display.drawLine(3, 1, 1, 3, 1);
   display.drawLine(124, 1, 126, 3, 1);
   display.drawLine(126, 60, 124, 62, 1);
-  display.drawLine(36, 37, 91, 37, 1);
-  display.drawLine(36, 38, 91, 38, 1);
+  display.drawLine(29, 37, 99, 37, 1);
+  display.drawLine(29, 38, 99, 38, 1);
 
   // Icon-icon (tetap sama)
   // Icon Baterai HP
@@ -415,7 +424,7 @@ void updateDisplay() {
   display.print(currentCity);
 
   // JAM - selalu di tengah horizontal
-  drawCenteredText(currentTime, 32, 2, &SeaDog_rgEVB4pt7b);
+  drawCenteredText(currentTime, 34, 2, &SeaDog_rgEVB4pt7b);
 
   // TANGGAL - selalu di tengah horizontal
   drawCenteredText(currentDate, 46, 1, &Org_01);
