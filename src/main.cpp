@@ -30,6 +30,23 @@ int unreadNotifCount = 0;
 String lastNotification = "";
 String lastNotifApp = "";
 
+// ============ VARIABEL NOTIFIKASI ============
+#define MAX_NOTIF 5  // Maksimal 5 notifikasi tersimpan
+
+struct SavedNotification {
+  String app;
+  String title;
+  String message;
+  bool isRead;
+};
+
+SavedNotification notifications[MAX_NOTIF];
+int notifCount = 0;
+int currentNotifIndex = 0;
+bool showNotificationMode = false;
+unsigned long notifDisplayTime = 0;
+const unsigned long NOTIF_DURATION = 5000; // Tampilkan notifikasi selama 5 detik
+
 // Data cuaca dan lokasi
 WeatherLocation weatherLocation;
 Weather currentWeather;
@@ -67,6 +84,29 @@ void onNotificationReceived(Notification notif) {
   unreadNotifCount++;
   lastNotifApp = notif.app;
   lastNotification = notif.title + ": " + notif.message;
+  
+  // Simpan notifikasi ke array
+  if (notifCount < MAX_NOTIF) {
+    notifications[notifCount].app = notif.app;
+    notifications[notifCount].title = notif.title;
+    notifications[notifCount].message = notif.message;
+    notifications[notifCount].isRead = false;
+    notifCount++;
+  } else {
+    // Geser notifikasi lama jika penuh
+    for (int i = 0; i < MAX_NOTIF - 1; i++) {
+      notifications[i] = notifications[i + 1];
+    }
+    notifications[MAX_NOTIF - 1].app = notif.app;
+    notifications[MAX_NOTIF - 1].title = notif.title;
+    notifications[MAX_NOTIF - 1].message = notif.message;
+    notifications[MAX_NOTIF - 1].isRead = false;
+  }
+  
+  // Aktifkan mode notifikasi
+  showNotificationMode = true;
+  currentNotifIndex = notifCount - 1;
+  notifDisplayTime = millis();
   
   Serial.println("Notif: " + String(notif.app) + " - " + String(notif.title));
 }
@@ -262,6 +302,7 @@ void setup() {
 
   // Update display setiap loop
 void updateDisplay();
+void drawNotificationScreen();
 
 
 // Tambahkan variabel ini di bagian global
@@ -277,7 +318,23 @@ void loop() {
   
   unsigned long now = millis();
   
-    // Update jam internal setiap detik
+  // Cek apakah mode notifikasi sudah selesai
+  if (showNotificationMode && (now - notifDisplayTime >= NOTIF_DURATION)) {
+    showNotificationMode = false;
+    // Tandai notifikasi sebagai sudah dibaca
+    if (currentNotifIndex >= 0 && currentNotifIndex < notifCount) {
+      notifications[currentNotifIndex].isRead = true;
+    }
+    // Update unread count
+    unreadNotifCount = 0;
+    for (int i = 0; i < notifCount; i++) {
+      if (!notifications[i].isRead) {
+        unreadNotifCount++;
+      }
+    }
+  }
+  
+  // Update jam internal setiap detik
   if (now - lastSecondUpdate >= 1000) {
     lastSecondUpdate = now;
     
@@ -285,8 +342,8 @@ void loop() {
     String fullTime = chronos.getTime();
     currentTime = fullTime.substring(0, 5);  // "HH:MM"
     
-    // Update tanggal setiap 60 detik
-    if (now - lastDateUpdate >= 60000) {
+    // Update tanggal setiap 60 detik (hanya jika tidak dalam mode notifikasi)
+    if (!showNotificationMode && (now - lastDateUpdate >= 60000)) {
       lastDateUpdate = now;
       
       // Parsing jam untuk siang/malam
@@ -313,25 +370,27 @@ void loop() {
     Serial.println("Manual sync requested");
   }
   
-  // Print debug setiap 10 detik (jangan setiap loop!)
+  // Print debug setiap 10 detik
   if (now - lastPrintTime >= 10000) {
     lastPrintTime = now;
     printAllConfigs();
   }
   
-  // Tambahkan di loop untuk request data baterai lebih sering
-  if (now - lastBatteryCheck >= 10000) { // setiap 10 detik
+  // Request data baterai setiap 10 detik
+  if (now - lastBatteryCheck >= 10000) {
     lastBatteryCheck = now;
-    
-    // Request data baterai dengan command khusus
     uint8_t cmd[] = {0x0B, 0x01};
     chronos.sendCommand(cmd, 2);
-    
     Serial.println("Requesting battery data...");
   }
 
-
-  updateDisplay();
+  // Pilih tampilan berdasarkan mode
+  if (showNotificationMode) {
+    drawNotificationScreen();
+  } else {
+    updateDisplay(); // Tampilan utama (jam)
+  }
+  
   delay(50);
 }
 
@@ -372,8 +431,6 @@ void updateDisplay() {
   display.drawLine(3, 1, 1, 3, 1);
   display.drawLine(124, 1, 126, 3, 1);
   display.drawLine(126, 60, 124, 62, 1);
-  display.drawLine(29, 37, 99, 37, 1);
-  display.drawLine(29, 38, 99, 38, 1);
 
   // Icon-icon (tetap sama)
   // Icon Baterai HP
@@ -405,8 +462,6 @@ void updateDisplay() {
 
   // Icon Notifikasi
   if (unreadNotifCount > 0) {
-    display.drawBitmap(110, 49, image_notifdot_bits, 14, 10, 1);
-  } else {
     display.drawBitmap(110, 50, image_notif_bits, 13, 9, 1);
   }
 
@@ -435,5 +490,80 @@ void updateDisplay() {
   display.setCursor(20, 12);
   display.print(currentTemp + "'C");
 
+  display.display();
+}
+
+// ============ FUNGSI NOTIFIKASI ============
+
+void drawNotificationScreen() {
+  display.clearDisplay();
+
+  // Gambar frame khusus notifikasi
+  display.drawLine(126, 3, 126, 60, 1);
+  display.drawLine(1, 3, 1, 59, 1);
+  display.drawLine(4, 62, 124, 62, 1);
+  display.drawLine(4, 1, 124, 1, 1);
+  display.drawLine(1, 60, 3, 62, 1);
+  display.drawLine(3, 1, 1, 3, 1);
+  display.drawLine(124, 1, 126, 3, 1);
+  display.drawLine(126, 60, 124, 62, 1);
+  display.drawLine(1, 47, 126, 47, 1);  // Garis pemisah
+
+  // Ambil notifikasi yang akan ditampilkan
+  SavedNotification notif = notifications[currentNotifIndex];
+  
+  // Tampilkan icon notifikasi
+  display.drawBitmap(110, 49, image_notifdot_bits, 14, 10, 1);
+  
+  // Tampilkan nama aplikasi
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextWrap(false);
+  display.setFont(&Org_01);
+  display.setTextSize(1);
+  display.setCursor(6, 56);
+  display.print(notif.app);
+  
+  // Tampilkan judul notifikasi (dipotong jika terlalu panjang)
+  String titleDisplay = notif.title;
+  if (titleDisplay.length() > 20) {
+    titleDisplay = titleDisplay.substring(0, 18) + "...";
+  }
+  
+  display.setCursor(6, 11);
+  display.print(titleDisplay);
+  
+  // Tampilkan isi pesan (dengan word wrapping sederhana)
+  String message = notif.message;
+  int maxCharsPerLine = 21; // Perkiraan untuk font Org_01 ukuran 1
+  int lineY = 22;
+  
+  while (message.length() > 0 && lineY < 45) {
+    String line;
+    if (message.length() > maxCharsPerLine) {
+      // Cari spasi terakhir dalam batas maxChars
+      int lastSpace = message.lastIndexOf(' ', maxCharsPerLine);
+      if (lastSpace > 0) {
+        line = message.substring(0, lastSpace);
+        message = message.substring(lastSpace + 1);
+      } else {
+        line = message.substring(0, maxCharsPerLine);
+        message = message.substring(maxCharsPerLine);
+      }
+    } else {
+      line = message;
+      message = "";
+    }
+    
+    display.setCursor(6, lineY);
+    display.print(line);
+    lineY += 10; // Tinggi baris untuk font ukuran 1
+  }
+  
+  // Tampilkan indikator halaman jika ada banyak notifikasi
+  if (notifCount > 1) {
+    display.setCursor(60, 2);
+    display.print(String(currentNotifIndex + 1) + "/" + String(notifCount));
+  }
+  
   display.display();
 }
